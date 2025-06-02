@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>المطاعم القريبة</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f4f4f4;
+      margin: 0;
+      padding: 0;
+      text-align: center;
+    }
+    h1 {
+      background: #4CAF50;
+      color: white;
+      padding: 15px 0;
+      margin: 0;
+    }
+    #map {
+      height: 60vh;
+      width: 100%;
+    }
+    #info {
+      background: white;
+      margin: 20px auto;
+      padding: 20px;
+      width: 90%;
+      max-width: 600px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    #loading {
+      font-size: 18px;
+      color: #555;
+    }
+    #restaurantsList {
+      list-style: none;
+      padding: 0;
+    }
+    #restaurantsList li {
+      background: #f9f9f9;
+      margin: 5px 0;
+      padding: 10px;
+      border-radius: 5px;
+      text-align: right;
+    }
+    .spinner {
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      border: 4px solid #ccc;
+      border-top: 4px solid #4CAF50;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 10px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <h1>حدد موقعك على الخريطة لعرض المطاعم القريبة</h1>
+  <div id="map"></div>
+  <div id="info">
+    <p id="location">الموقع: <span id="address">غير محدد</span></p>
+    <p id="hungerstationLink" style="direction: ltr"></p>
+    <p id="loading" style="display: none;"><span class="spinner"></span> جاري جلب البيانات...</p>
+    <ul id="restaurantsList"></ul>
+  </div>
+
+  <script>
+    let map;
+    let marker;
+
+    function initMap() {
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: { lat: 26.4206828, lng: 50.0887943 },
+        zoom: 14,
+      });
+
+      map.addListener("click", (e) => {
+        const lat = e.latLng.lat();
+        const lng = e.latLng.lng();
+        if (marker) marker.setMap(null);
+        marker = new google.maps.Marker({ position: e.latLng, map });
+
+        document.getElementById("loading").style.display = "block";
+        document.getElementById("restaurantsList").innerHTML = "";
+        document.getElementById("address").textContent = "...";
+        document.getElementById("hungerstationLink").innerHTML = "";
+
+        fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&language=ar&key=AIzaSyAWUO8LPBRrOGDB_860Gt1uwTkHzUM0KKk`
+        )
+          .then((res) => res.json())
+          .then((data) => {
+            const components = data.results[0].address_components;
+            const city = components.find(c => c.types.includes("locality"))?.long_name || "غير معروف";
+            const district = components.find(c => c.types.includes("sublocality"))?.long_name || "غير معروف";
+
+            document.getElementById("address").textContent = `المدينة: ${city}، الحي: ${district}`;
+            const url = `https://hungerstation.com/sa-ar/restaurants/${encodeURIComponent(city)}/${encodeURIComponent(district)}?lat=${lat}&lng=${lng}`;
+            document.getElementById("hungerstationLink").innerHTML = `<a href="${url}" target="_blank">رابط هنقرستيشن</a>`;
+
+            fetch("http://localhost:5500/scrape", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url }),
+            })
+              .then((res) => res.json())
+              .then((data) => {
+                document.getElementById("loading").style.display = "none";
+                const list = document.getElementById("restaurantsList");
+                list.innerHTML = "";
+                if (data.restaurants.length === 0) {
+                  list.innerHTML = "<li>لم يتم العثور على مطاعم</li>";
+                } else {
+                  data.restaurants.forEach((name) => {
+                    const li = document.createElement("li");
+                    li.textContent = name;
+                    list.appendChild(li);
+                  });
+                }
+              })
+              .catch((err) => {
+                document.getElementById("loading").style.display = "none";
+                alert("حدث خطأ أثناء جلب البيانات");
+                console.error(err);
+              });
+          });
+      });
+    }
+  </script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAWUO8LPBRrOGDB_860Gt1uwTkHzUM0KKk&callback=initMap"></script>
+</body>
+</html>
